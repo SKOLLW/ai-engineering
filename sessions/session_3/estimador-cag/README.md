@@ -71,6 +71,14 @@ Swagger UI: <http://localhost:8000/docs>
 
 On Windows PowerShell, write `curl.exe` instead of `curl` (`curl` there is another command).
 
+## Chat UI (Session 3)
+
+```bash
+uv run streamlit run streamlit_app.py
+```
+
+Paste a meeting transcript in the chat box. The estimate streams in as it is written.
+
 ## Validation
 
 ```bash

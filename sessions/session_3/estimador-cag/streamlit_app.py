@@ -42,15 +42,29 @@ if prompt := st.chat_input("Paste the meeting transcript here"):
                 "and try again. Your last message was not saved: send it again."
             )
         else:
-            st.session_state.messages = [*history, {"role": "assistant", "content": answer}]
-            # Saved only on success, so a failed call never replaces the last good numbers.
-            # getattr: a stream with no metrics (or none yet) counts as unknown, not as zero.
-            st.session_state.last_call = {
-                "model": getattr(stream, "model", None),
-                "input_tokens": getattr(stream, "input_tokens", None),
-                "output_tokens": getattr(stream, "output_tokens", None),
-                "seconds": elapsed,
-            }
+            if not answer.strip():
+                # No text at all: nothing to save, so the user sends the message again.
+                st.error(
+                    "The model returned an empty answer. "
+                    "Your last message was not saved: send it again."
+                )
+            else:
+                st.session_state.messages = [*history, {"role": "assistant", "content": answer}]
+                # Saved only on success, so a failed call never replaces the last good numbers.
+                # getattr: a stream with no metrics (or none yet) counts as unknown, not as zero.
+                st.session_state.last_call = {
+                    "model": getattr(stream, "model", None),
+                    "input_tokens": getattr(stream, "input_tokens", None),
+                    "output_tokens": getattr(stream, "output_tokens", None),
+                    "seconds": elapsed,
+                }
+                reason = getattr(stream, "incomplete_reason", None)
+                if reason:
+                    # Shown on this run only: it is not stored in the history.
+                    st.warning(
+                        f"The answer was cut off ({reason}) and may be incomplete. "
+                        "The partial answer is saved."
+                    )
 
 
 def or_na(value) -> str:

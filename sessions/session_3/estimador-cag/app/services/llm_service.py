@@ -87,6 +87,7 @@ class EstimationStream:
     Iterate it to get the text deltas as plain str (what st.write_stream expects).
     When the loop ends, model, input_tokens and output_tokens are filled. They stay None
     if the stream never completed or had no usage, so the UI never shows an invented number.
+    incomplete_reason is set when the answer was cut off; it is None on a normal answer.
     """
 
     def __init__(self, history: list[dict[str, str]]):
@@ -95,6 +96,8 @@ class EstimationStream:
         self.provider: str = get_settings().llm_provider
         self.input_tokens: int | None = None
         self.output_tokens: int | None = None
+        # Set only when the model stopped early (e.g. "max_output_tokens"); None otherwise.
+        self.incomplete_reason: str | None = None
 
     def __iter__(self) -> Iterator[str]:
         # The request starts here, not in __init__, so building the object costs nothing.
@@ -104,10 +107,16 @@ class EstimationStream:
             stream=True,
         )
         for event in events:
-            if event.type == "response.output_text.delta":
+            # A refusal is the model's answer: it streams like text so the user sees it.
+            if event.type in ("response.output_text.delta", "response.refusal.delta"):
                 yield event.delta
             elif event.type == "response.completed":
                 self._read_metrics(event.response)
+            elif event.type == "response.incomplete":
+                # Cut off (e.g. token limit): keep the partial text and the real metrics.
+                self._read_metrics(event.response)
+                details = getattr(event.response, "incomplete_details", None)
+                self.incomplete_reason = getattr(details, "reason", None)
             elif event.type == "response.failed":
                 error = event.response.error
                 raise LLMStreamError(error.message if error else "The response failed.")

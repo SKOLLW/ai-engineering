@@ -1,9 +1,10 @@
 """LLM call service: builds the CAG prompt and asks OpenAI for an estimate."""
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from functools import lru_cache
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, OpenAI
 
 from app.config import get_settings
 from app.context.examples import ESTIMATION_EXAMPLES, HOURLY_RATE_USD
@@ -68,6 +69,65 @@ def build_system_prompt() -> str:
 def get_client() -> AsyncOpenAI:
     """One shared async client; the key comes from .env via the settings, never from the code."""
     return AsyncOpenAI(api_key=get_settings().openai_api_key.get_secret_value())
+
+
+@lru_cache
+def get_sync_client() -> OpenAI:
+    """Sync client for Streamlit, which is synchronous. The async client stays for FastAPI."""
+    return OpenAI(api_key=get_settings().openai_api_key.get_secret_value())
+
+
+class LLMStreamError(RuntimeError):
+    """The model stream sent an error event or a failed response."""
+
+
+class EstimationStream:
+    """Streams the answer to a chat history and keeps the call metrics.
+
+    Iterate it to get the text deltas as plain str (what st.write_stream expects).
+    When the loop ends, model, input_tokens and output_tokens are filled. They stay None
+    if the stream never completed or had no usage, so the UI never shows an invented number.
+    """
+
+    def __init__(self, history: list[dict[str, str]]):
+        self._history = list(history)  # a copy: the chat UI keeps appending to its own list
+        self.model: str | None = None
+        self.provider: str = get_settings().llm_provider
+        self.input_tokens: int | None = None
+        self.output_tokens: int | None = None
+
+    def __iter__(self) -> Iterator[str]:
+        # The request starts here, not in __init__, so building the object costs nothing.
+        events = get_sync_client().responses.create(
+            model=get_settings().llm_model,
+            input=[{"role": "system", "content": build_system_prompt()}, *self._history],
+            stream=True,
+        )
+        for event in events:
+            if event.type == "response.output_text.delta":
+                yield event.delta
+            elif event.type == "response.completed":
+                self._read_metrics(event.response)
+            elif event.type == "response.failed":
+                error = event.response.error
+                raise LLMStreamError(error.message if error else "The response failed.")
+            elif event.type == "error":
+                # Text already yielded stays on screen; the caller decides how to show the error.
+                raise LLMStreamError(event.message)
+
+    def _read_metrics(self, response) -> None:
+        self.model = response.model
+        if response.usage is not None:
+            self.input_tokens = response.usage.input_tokens
+            self.output_tokens = response.usage.output_tokens
+
+
+def stream_estimation(history: list[dict[str, str]]) -> EstimationStream:
+    """Chat entry point: [system] the CAG prompt + the whole conversation so far.
+
+    The model sees every turn, so a follow-up like "make it cheaper" works.
+    """
+    return EstimationStream(history)
 
 
 async def generate_estimation(transcription: str) -> EstimationOutput:

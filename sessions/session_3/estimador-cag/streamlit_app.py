@@ -58,8 +58,15 @@ def or_na(value) -> str:
     return "n/a" if value is None else str(value)
 
 
+def start_new_chat() -> None:
+    # A button callback runs before the script reruns, so the old messages are never drawn again.
+    st.session_state.messages = []
+    st.session_state.pop("last_call", None)
+
+
 # The sidebar is drawn last, after the call above, so it already sees this run's metrics.
 with st.sidebar:
+    st.button("New chat", on_click=start_new_chat)
     st.header("CAG context")
 
     with st.expander("System prompt (read-only)"):

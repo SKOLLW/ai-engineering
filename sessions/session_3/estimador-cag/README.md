@@ -81,6 +81,8 @@ Paste a meeting transcript in the chat box. The estimate streams in as it is wri
 
 The sidebar shows the system prompt, the injected example estimates and the metrics of the last call (model, tokens, response time).
 
+The "New chat" button in the sidebar clears the conversation, so the next transcript is estimated alone.
+
 ## Validation
 
 ```bash

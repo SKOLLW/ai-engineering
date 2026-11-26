@@ -79,6 +79,8 @@ uv run streamlit run streamlit_app.py
 
 Paste a meeting transcript in the chat box. The estimate streams in as it is written.
 
+The sidebar shows the system prompt, the injected example estimates and the metrics of the last call (model, tokens, response time).
+
 ## Validation
 
 ```bash
